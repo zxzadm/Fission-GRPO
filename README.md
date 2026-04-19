@@ -7,146 +7,83 @@
 
 > [!IMPORTANT]
 > This repository is being prepared for the official open-source release of **Fission-GRPO**.  
-> The codebase and training data are currently under internal review and will be uploaded once the approval process is completed.
+> The codebase, training data, model checkpoints, and evaluation scripts are currently under internal review and will be uploaded once the approval process is completed.
 
-This repository contains the official project page for the ACL 2026 paper:
+This repository currently serves as the **official project page** for the ACL 2026 paper:
 
 > **Robust Tool Use via Fission-GRPO: Learning to Recover from Execution Errors**  
 > Zhiwei Zhang, Fei Zhao, Rui Wang, Zezhong Wang, Bin Liang, Jiakang Wang, Yao Hu, Shaosheng Cao, Kam-Fai Wong
+
 ---
 
 ## Overview
 
-**Fission-GRPO** is a dynamic training framework for multi-turn tool-use robustness. Unlike standard RL approaches that treat execution errors purely as negative reward signals, Fission-GRPO converts failed trajectories into corrective supervision *within* the RL loop — enabling the model to learn not only which actions are wrong, but concretely how to recover from its own mistakes.
+**Fission-GRPO** is a training framework for improving **multi-turn tool-use robustness**.  
+Instead of treating execution errors as purely negative reward signals, Fission-GRPO converts failed trajectories into **on-policy corrective supervision** inside the RL loop, enabling the model to learn not only which actions are wrong, but also how to recover from its own mistakes.
 
-A key advantage of this framework is its **dynamic data generation** capability: rather than relying on a fixed supervision set, Fission-GRPO continuously mines new correction examples from the base dataset *throughout training*, producing a self-expanding stream of corrective trajectories that keeps the training signal fresh and diverse as the model evolves.
+The framework is motivated by a key limitation of standard RL for tool use: when a tool call fails, the model typically receives only a sparse penalty, without any direct supervision about how to correct the failure. Fission-GRPO addresses this by transforming failure cases into new corrective training instances during exploration.
 
-The training pipeline proceeds as follows:
+At a high level, the framework works as follows:
 
-1. The policy is optimized via GRPO on multi-turn tool-use rollouts.
-2. Failed or low-quality trajectories are intercepted by the correction pipeline.
-3. A diagnostic error message is appended to each failed trajectory, constructing a correction example.
-4. These augmented trajectories are buffered, deduplicated, and replayed as additional correction batches.
-
----
-
-## Repository Structure
-
-The main entry point for training is:
-
-```
-train.sh          # Main RL training launch script
-```
-
-Training is launched via `python3 -m verl.trainer.main_ppo` with the correction stream enabled by default.
+1. The policy is optimized with GRPO on multi-turn tool-use trajectories.
+2. Failed or low-quality trajectories are intercepted by a correction pipeline.
+3. Diagnostic feedback is attached to the failed context to form a corrective example.
+4. These corrective examples are replayed as additional on-policy updates, helping the model learn recovery behavior.
 
 ---
 
-## Error Feedback Modes
+## Key Idea
 
-Fission-GRPO supports two modes for providing corrective feedback signals during training.
+The central idea of **fission** is to turn a single execution failure into a source of additional supervision.
 
-### Mode 1: Fixed Fallback Feedback
+Rather than relying on a fixed offline error-correction dataset, Fission-GRPO continuously mines new correction examples from the model's current failure modes during training. This produces a dynamic stream of corrective trajectories that stays aligned with the evolving policy distribution.
 
-The simplest mode uses a fixed error string as the feedback signal:
+This design has two important benefits:
 
-```
-error: you made a mistake. please try again.
-```
-
-This is suitable for establishing a stable baseline or verifying that the correction pipeline is functioning correctly, without requiring any external model.
-
-### Mode 2: LLM-Based Error Simulator
-
-For richer feedback, Fission-GRPO supports an LLM-based error simulator that generates dynamic, context-aware corrective messages on the fly via any OpenAI-compatible API endpoint.
-
-> **Note:** A dedicated SFT-trained error simulator, fine-tuned specifically to produce diagnostic feedback for tool-use failures, yields the strongest performance. If such a checkpoint is not available, a general-purpose LLM API prompted with an appropriate system prompt can serve as a practical substitute and still produce meaningful improvements over the fixed fallback.
-
-The feedback model is configured through the following environment variables:
-
-| Variable | Description |
-|---|---|
-| `XHS_MAAS_BASE_URL` | Base URL for the OpenAI-compatible API endpoint |
-| `XHS_MAAS_API_KEY` | Primary API key |
-| `BFCL_SIMULATOR_API_KEY` | Fallback API key if primary is unavailable |
-| `XHS_MAAS_MODEL` | Model identifier (e.g., `gpt-4.1`) |
-
-If the external feedback model is unavailable or fails at any point, the framework gracefully reverts to the fixed fallback message, ensuring that training is never blocked.
+- **On-policy alignment:** the model learns from the types of errors it is currently making.
+- **Corrective supervision:** failures are not only penalized, but also converted into learning opportunities for recovery.
 
 ---
 
-## Prerequisites
+## Method Framework
 
-Before launching training, ensure the following are available:
+Fission-GRPO consists of three stages:
 
-- A base model checkpoint
-- Training and validation data in verl RL parquet format
-- An output directory and a log directory
-- A valid reward function file
+### 1. Standard Exploration
+The policy interacts with the environment under the GRPO objective and generates multi-turn tool-use trajectories.
 
-### Required Environment Variables
+### 2. Error Identification and Feedback Construction
+Failed or low-quality trajectories are filtered and transformed into corrective contexts by appending diagnostic feedback.
 
-| Variable | Description |
-|---|---|
-| `PROJECT_FOLDER` | Root project directory |
-| `ori_checkpoint_path` | Path to the base model checkpoint |
-| `TRAIN_FILES_JSON` | JSON list of training parquet file paths |
-| `VAL_FILES_JSON` | JSON list of validation parquet file paths |
-| `OUTPUT_DIR` | Directory for model outputs and checkpoints |
-| `LOG_DIR` | Directory for training logs |
-| `CUSTOM_REWARD_FUNCTION_PATH` | Path to the reward function `.py` file |
-
-### Optional Environment Variables
-
-| Variable | Description |
-|---|---|
-| `WANDB_API_KEY` | Weights & Biases API key (required if using wandb logging) |
-| `XHS_MAAS_BASE_URL` | API base URL for the LLM-based error simulator |
-| `XHS_MAAS_API_KEY` | Primary API key for the error simulator |
-| `BFCL_SIMULATOR_API_KEY` | Fallback API key for the error simulator |
-| `XHS_MAAS_MODEL` | Model name for the error simulator |
+### 3. Fission-Based Corrective Update
+These corrective contexts are replayed as additional updates, allowing the model to explicitly learn recovery strategies from its own execution errors.
 
 ---
 
-## Quick Start
+## Release Status
 
-```bash
-export PROJECT_FOLDER=/path/to/verl_fission_exp
-export ori_checkpoint_path=/path/to/base/model
-export TRAIN_FILES_JSON='["/path/to/train.parquet"]'
-export VAL_FILES_JSON='["/path/to/test.parquet"]'
-export OUTPUT_DIR=/path/to/output_dir
-export LOG_DIR=/path/to/log_dir
-export CUSTOM_REWARD_FUNCTION_PATH=/path/to/reward_file.py
+At this stage, this repository serves as the official project page.
 
-# Optional: LLM-based error simulator
-export XHS_MAAS_BASE_URL=https://your-openai-compatible-endpoint.example.com/v1
-export XHS_MAAS_API_KEY=your_api_key
-export XHS_MAAS_MODEL=gpt-4.1
+The full open-source release is currently under internal review. Once approval is completed, we plan to update this repository with:
 
-bash train.sh
-```
+- training code
+- data processing scripts
+- synthetic training data
+- error simulator checkpoints
+- evaluation scripts
+- example configs and launch scripts
+- documentation for reproduction
 
 ---
 
-## Notes on the Correction Pipeline
+## Planned Contents
 
-- Correction examples are collected from failed or low-quality rollouts and deduplicated before replay.
-- A correction batch is only triggered once a sufficient number of unique correction examples has accumulated; skipped steps when this threshold is not met are expected behavior.
-- Intermediate correction parquet files are written under `OUTPUT_DIR` for inspection and reproducibility.
-- The pipeline degrades gracefully: if LLM-based feedback is unavailable at any point, the fixed fallback is used and training continues uninterrupted.
+The full release is intended to support the following use cases:
 
----
-
-## Scope of This Release
-
-This codebase is intended to support:
-
-- Reproducing the training workflow described in the paper
-- Understanding the integration of the correction stream within GRPO training
-- Adapting the framework to new tool-use benchmarks or alternative error-feedback backends
-
-> **Important:** The provided `train.sh` contains placeholder paths and is not intended to run as-is. Please set all required environment variables before launching training. In particular, verify that `CUSTOM_REWARD_FUNCTION_PATH` resolves correctly in your environment.
+- reproducing the training workflow described in the paper
+- understanding how the corrective stream is integrated into GRPO training
+- studying the role of dynamic feedback in multi-turn error recovery
+- adapting the framework to new tool-use benchmarks or alternative feedback backends
 
 ---
 
@@ -163,3 +100,10 @@ If you find this work useful, please cite:
   year={2026}
 }
 ```
+
+
+Contact
+
+If you have questions about the paper or the upcoming release, please feel free to open an issue in this repository.
+
+
