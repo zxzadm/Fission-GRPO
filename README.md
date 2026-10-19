@@ -7,8 +7,6 @@
 
 Official code for **Robust Tool Use via Fission-GRPO: Learning to Recover from Execution Errors** (ACL 2026, Long Papers).
 
-**Zhiwei Zhang, Fei Zhao, Rui Wang, Zezhong Wang, Bin Liang, Jiakang Wang, Yao Hu, Shaosheng Cao, and Kam-Fai Wong**
-
 [Paper](https://arxiv.org/abs/2601.15625) · [PDF](https://arxiv.org/pdf/2601.15625) · [Training](#training) · [Results](#results) · [Citation](#citation)
 
 ## Why learn from execution errors?
