@@ -1,0 +1,4 @@
+# Local cache and desktop metadata
+__pycache__/
+*.py[cod]
+.DS_Store

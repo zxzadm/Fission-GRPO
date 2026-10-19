@@ -1,0 +1,2 @@
+bsud-qs-rydj-21 10.217.101.34
+bsud-reservedpool-gjxac-32 10.217.105.191
